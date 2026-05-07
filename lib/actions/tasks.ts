@@ -19,7 +19,7 @@ function isTaskStatus(status: string): status is (typeof TASK_STATUSES)[number] 
 }
 
 /**
- * Resolve project and check access. ADMIN can access any project; others must be manager or member.
+ * Resolve project and check access. Users can access projects they own or belong to.
  */
 async function ensureProjectAccess(
   projectId: string,
@@ -33,9 +33,9 @@ async function ensureProjectAccess(
   if (!project) return { error: "Project not found" as const, project: null };
 
   const isManager = project.managerId === userId;
-  const isMember = project.members.some((m) => m.userId === userId);
-  const hasAccess =
-    role === "ADMIN" || isManager || isMember;
+  const membership = project.members.find((m) => m.userId === userId);
+  const isMember = !!membership;
+  const hasAccess = isManager || isMember;
   if (!hasAccess) return { error: "Access denied" as const, project: null };
 
   return { error: null, project };
@@ -52,7 +52,10 @@ export async function createTask(projectId: string, formData: FormData) {
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
-  if (!canCreateTask(session.user.role as string, project.managerId, session.user.id)) {
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (!canCreateTask(session.user.role as string, project.managerId, session.user.id, userProjectRole)) {
     return { error: "Only Admin or project Manager can create tasks" };
   }
 
@@ -115,7 +118,8 @@ export async function updateTask(
     session.user.role as string,
     project.managerId,
     session.user.id,
-    task.assigneeId
+    task.assigneeId,
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null
   );
   if (!canEdit) return { error: "You can only edit your own assigned tasks" };
 
@@ -132,7 +136,8 @@ export async function updateTask(
   const canChangeAssignee = canAssignTask(
     session.user.role as string,
     project.managerId,
-    session.user.id
+    session.user.id,
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null
   );
   const canChangeDetails = canEdit;
 
@@ -177,7 +182,10 @@ export async function deleteTask(taskId: string, projectId: string) {
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
-  if (!canDeleteTask(session.user.role as string, project.managerId, session.user.id)) {
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (!canDeleteTask(session.user.role as string, project.managerId, session.user.id, userProjectRole)) {
     return { error: "Only Admin or project Manager can delete tasks" };
   }
 
@@ -213,7 +221,10 @@ export async function moveTask(
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task) return { error: "Task not found" };
 
-  if (!canMoveTask(session.user.role as string, project.managerId, session.user.id, task.assigneeId)) {
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (!canMoveTask(session.user.role as string, project.managerId, session.user.id, task.assigneeId, userProjectRole)) {
     return { error: "You can only move your own assigned tasks" };
   }
 

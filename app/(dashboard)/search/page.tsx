@@ -12,15 +12,12 @@ async function searchData(userId: string, role: string, query: string) {
   }
 
   const q = query.trim().toLowerCase();
-  const projectAccessFilter =
-    role === "ADMIN"
-      ? {}
-      : {
-          OR: [
-            { managerId: userId },
-            { members: { some: { userId } } },
-          ],
-        };
+  const projectAccessFilter = {
+    OR: [
+      { managerId: userId },
+      { members: { some: { userId } } },
+    ],
+  };
 
   const projects = await prisma.project.findMany({
     where: {

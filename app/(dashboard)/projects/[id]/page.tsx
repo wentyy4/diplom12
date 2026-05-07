@@ -6,18 +6,14 @@ import { ProjectHeader } from "@/components/ProjectHeader";
 import { KanbanBoard } from "@/components/KanbanBoard";
 
 async function getProject(id: string, userId: string, role: string) {
-  // ADMIN can access any project; others only if manager or member
   const project = await prisma.project.findFirst({
-    where:
-      role === "ADMIN"
-        ? { id }
-        : {
-            id,
-            OR: [
-              { managerId: userId },
-              { members: { some: { userId } } },
-            ],
-          },
+    where: {
+      id,
+      OR: [
+        { managerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
     include: {
       manager: { select: { name: true } },
       members: { include: { user: { select: { id: true, name: true } } } },
@@ -44,7 +40,14 @@ export default async function ProjectKanbanPage({
 
   const role = session.user.role as string;
   const userId = session.user.id;
-  const canEditProject = canManageProject(role, project.managerId, userId);
+  const currentMembership = project.members.find((m) => m.userId === userId);
+  const userProjectRole = currentMembership?.role ?? null;
+  const canEditProject = canManageProject(
+    role,
+    project.managerId,
+    userId,
+    userProjectRole
+  );
 
   const members = project.members.map((m) => m.user);
   const managerUser = { id: project.managerId, name: project.manager.name };
@@ -72,6 +75,7 @@ export default async function ProjectKanbanPage({
         members={allMembers}
         userRole={session.user.role as string}
         userId={session.user.id}
+        userProjectRole={userProjectRole}
       />
     </div>
   );

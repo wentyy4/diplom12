@@ -35,16 +35,12 @@ export async function searchGlobal(query: string): Promise<{
 
   const qLower = q.toLowerCase();
   const userId = session.user.id;
-  const role = session.user.role as string;
-  const projectAccessFilter =
-    role === "ADMIN"
-      ? {}
-      : {
-          OR: [
-            { managerId: userId },
-            { members: { some: { userId } } },
-          ],
-        };
+  const projectAccessFilter = {
+    OR: [
+      { managerId: userId },
+      { members: { some: { userId } } },
+    ],
+  };
 
   const [projects, tasks] = await Promise.all([
     prisma.project.findMany({

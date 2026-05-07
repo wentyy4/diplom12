@@ -22,7 +22,29 @@ model User {
   managedProjects Project[]     @relation("ProjectManager")
   memberProjects  ProjectMember[]
   assignedTasks   Task[]
+  sentInvitations Invitation[]  @relation("InvitationInviter")
   @@map("users")
+}
+
+// Admin-issued invitations for new users to join the firm or a project with a pre-selected role.
+// Token-based: admin generates a unique URL the recipient opens to register.
+// Single-use (acceptedAt prevents replay) and time-bound (expiresAt).
+model Invitation {
+  id         String    @id @default(cuid())
+  email      String
+  role       String    // MANAGER | MEMBER
+  token      String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  invitedBy  String
+  projectId  String?
+  inviter    User      @relation("InvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
+  project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdAt  DateTime  @default(now())
+
+  @@index([email])
+  @@index([projectId])
+  @@map("invitations")
 }
 
 model Project {
@@ -36,6 +58,7 @@ model Project {
   manager User          @relation("ProjectManager", fields: [managerId], references: [id], onDelete: Cascade)
   members ProjectMember[]
   tasks   Task[]
+  invitations Invitation[]
   @@map("projects")
 }
 
@@ -43,6 +66,7 @@ model ProjectMember {
   id        String   @id @default(cuid())
   projectId String
   userId    String
+  role      String   @default("MEMBER") // PROJECT_MANAGER | MEMBER
   joinedAt  DateTime @default(now())
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)

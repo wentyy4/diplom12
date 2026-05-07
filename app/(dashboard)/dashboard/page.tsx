@@ -22,15 +22,12 @@ import { RecentTasks } from "@/components/RecentTasks";
 
 async function getDashboardData(userId: string, role: string) {
   const projects = await prisma.project.findMany({
-    where:
-      role === "ADMIN"
-        ? {}
-        : {
-            OR: [
-              { managerId: userId },
-              { members: { some: { userId } } },
-            ],
-          },
+    where: {
+      OR: [
+        { managerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
     include: {
       tasks: { include: { assignee: { select: { id: true, name: true } } } },
       manager: { select: { name: true } },

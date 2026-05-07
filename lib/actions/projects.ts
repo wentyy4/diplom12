@@ -46,10 +46,16 @@ export async function updateProject(id: string, formData: FormData) {
   const session = await auth();
   if (!session?.user?.id) return { error: "Unauthorized" };
 
-  const project = await prisma.project.findUnique({ where: { id } });
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: { members: true },
+  });
   if (!project) return { error: "Project not found" };
 
-  if (!canManageProject(session.user.role as string, project.managerId, session.user.id)) {
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (!canManageProject(session.user.role as string, project.managerId, session.user.id, userProjectRole)) {
     return { error: "Access denied: only project manager or admin can edit projects" };
   }
 
@@ -61,19 +67,32 @@ export async function updateProject(id: string, formData: FormData) {
 
   if (!name?.trim()) return { error: "Project name is required" };
 
-  await prisma.$transaction([
-    prisma.projectMember.deleteMany({ where: { projectId: id } }),
-    prisma.project.update({
+  const uniqueMemberIds = [...new Set(memberIds)];
+
+  await prisma.$transaction(async (tx) => {
+    await tx.projectMember.deleteMany({
+      where: { projectId: id, userId: { notIn: uniqueMemberIds } },
+    });
+    await tx.project.update({
       where: { id },
       data: {
         name: name.trim(),
         description: description.trim(),
-        members: {
-          create: [...new Set(memberIds)].map((userId) => ({ userId })),
-        },
       },
-    }),
-  ]);
+    });
+    for (const userId of uniqueMemberIds) {
+      await tx.projectMember.upsert({
+        where: {
+          projectId_userId: {
+            projectId: id,
+            userId,
+          },
+        },
+        update: {},
+        create: { projectId: id, userId, role: "MEMBER" },
+      });
+    }
+  });
   revalidatePath("/dashboard");
   revalidatePath("/projects");
   revalidatePath(`/projects/${id}`);
@@ -88,10 +107,16 @@ export async function deleteProject(id: string) {
   const session = await auth();
   if (!session?.user?.id) return { error: "Unauthorized" };
 
-  const project = await prisma.project.findUnique({ where: { id } });
+  const project = await prisma.project.findUnique({
+    where: { id },
+    include: { members: true },
+  });
   if (!project) return { error: "Project not found" };
 
-  if (!canManageProject(session.user.role as string, project.managerId, session.user.id)) {
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (!canManageProject(session.user.role as string, project.managerId, session.user.id, userProjectRole)) {
     return { error: "Access denied: only project manager or admin can delete projects" };
   }
 

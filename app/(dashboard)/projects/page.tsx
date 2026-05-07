@@ -25,15 +25,12 @@ async function getAllUsers() {
 
 async function getProjects(userId: string, role: string) {
   return prisma.project.findMany({
-    where:
-      role === "ADMIN"
-        ? {}
-        : {
-            OR: [
-              { managerId: userId },
-              { members: { some: { userId } } },
-            ],
-          },
+    where: {
+      OR: [
+        { managerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
     include: {
       manager: { select: { name: true } },
       members: { include: { user: { select: { id: true, name: true } } } },
@@ -112,7 +109,11 @@ export default async function ProjectsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {projects.map((project) => (
+                {projects.map((project) => {
+                  const currentMembership = project.members.find(
+                    (member) => member.user.id === session.user.id
+                  );
+                  return (
                   <TableRow key={project.id}>
                     <TableCell>
                       <Link
@@ -136,7 +137,8 @@ export default async function ProjectsPage() {
                         {canManageProject(
                           session.user.role as string,
                           project.managerId,
-                          session.user.id
+                          session.user.id,
+                          currentMembership?.role
                         ) && (
                           <>
                             <ProjectsTable
@@ -158,7 +160,8 @@ export default async function ProjectsPage() {
                       </div>
                     </TableCell>
                   </TableRow>
-                ))}
+                  );
+                })}
               </TableBody>
             </Table>
           )}

@@ -17,7 +17,7 @@ import { toast } from "sonner";
 import type { Project } from "@prisma/client";
 
 type ProjectWithRelations = Project & {
-  members: { user: { id: string; name: string } }[];
+  members: { role?: string; user: { id: string; name: string } }[];
 };
 
 type ProjectFormProps = {

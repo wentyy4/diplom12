@@ -68,6 +68,7 @@ type KanbanBoardProps = {
   members: { id: string; name: string }[];
   userRole: string;
   userId: string;
+  userProjectRole?: string | null;
 };
 
 export function KanbanBoard({
@@ -77,6 +78,7 @@ export function KanbanBoard({
   members,
   userRole,
   userId,
+  userProjectRole = null,
 }: KanbanBoardProps) {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -90,7 +92,7 @@ export function KanbanBoard({
     setMounted(true);
   }, []);
 
-  const canCreate = canCreateTask(userRole, projectManagerId, userId);
+  const canCreate = canCreateTask(userRole, projectManagerId, userId, userProjectRole);
 
   const getTaskPermissions = useCallback(
     (task: Task): TaskCardPermissions => {
@@ -100,13 +102,13 @@ export function KanbanBoard({
       const assigneeId =
         task.assigneeId ?? (task as { assignee?: { id: string } }).assignee?.id ?? null;
       return {
-        canEdit: canEditTask(userRole, projectManagerId, userId, assigneeId),
-        canDelete: canDeleteTask(userRole, projectManagerId, userId),
-        canAssign: canAssignTask(userRole, projectManagerId, userId),
-        canDrag: canMoveTask(userRole, projectManagerId, userId, assigneeId),
+        canEdit: canEditTask(userRole, projectManagerId, userId, assigneeId, userProjectRole),
+        canDelete: canDeleteTask(userRole, projectManagerId, userId, userProjectRole),
+        canAssign: canAssignTask(userRole, projectManagerId, userId, userProjectRole),
+        canDrag: canMoveTask(userRole, projectManagerId, userId, assigneeId, userProjectRole),
       };
     },
-    [userRole, projectManagerId, userId]
+    [userRole, projectManagerId, userId, userProjectRole]
   );
 
   const sensors = useSensors(
@@ -311,7 +313,7 @@ export function KanbanBoard({
         onOpenChange={setAddTaskOpen}
         projectId={projectId}
         members={members}
-        canAssign={canAssignTask(userRole, projectManagerId, userId)}
+        canAssign={canAssignTask(userRole, projectManagerId, userId, userProjectRole)}
         onSuccess={(newTask) => {
           setAddTaskOpen(false);
           if (newTask) {
@@ -334,7 +336,7 @@ export function KanbanBoard({
           projectId={projectId}
           editTask={editTask}
           members={members}
-          canAssign={canAssignTask(userRole, projectManagerId, userId)}
+          canAssign={canAssignTask(userRole, projectManagerId, userId, userProjectRole)}
           onSuccess={() => {
             router.refresh();
             setEditTask(null);

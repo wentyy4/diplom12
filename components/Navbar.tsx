@@ -8,15 +8,12 @@ import { NavbarSearch } from "@/components/NavbarSearch";
 
 async function getAlertTasks(userId: string, role?: string) {
   const projects = await prisma.project.findMany({
-    where:
-      role === "ADMIN"
-        ? {}
-        : {
-            OR: [
-              { managerId: userId },
-              { members: { some: { userId } } },
-            ],
-          },
+    where: {
+      OR: [
+        { managerId: userId },
+        { members: { some: { userId } } },
+      ],
+    },
     include: {
       tasks: {
         where: {

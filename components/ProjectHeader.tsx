@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Pencil } from "lucide-react";
 import { ProjectForm } from "@/components/ProjectForm";
 import { DeleteProjectButton } from "@/components/DeleteProjectButton";
+import { InviteUserButton } from "@/components/InviteUserButton";
 import type { Project } from "@prisma/client";
 
 type ProjectWithMembers = Project & {
   manager: { name: string };
-  members: { user: { id: string; name: string } }[];
+  members: { role: string; user: { id: string; name: string } }[];
 };
 
 type ProjectHeaderProps = {
@@ -56,6 +57,7 @@ export function ProjectHeader({
             <Pencil className="h-4 w-4 mr-2" />
             Edit Project
           </Button>
+          <InviteUserButton projectId={project.id} projectName={project.name} />
           <DeleteProjectButton
             projectId={project.id}
             projectName={project.name}

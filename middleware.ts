@@ -7,11 +7,11 @@ import { auth } from "@/lib/auth";
  */
 export default auth((req) => {
   const isLoggedIn = !!req.auth;
-  const isAuthRoute =
-    req.nextUrl.pathname.startsWith("/login") ||
-    req.nextUrl.pathname.startsWith("/register");
+  const isLoginRoute = req.nextUrl.pathname.startsWith("/login");
+  const isRegisterRoute = req.nextUrl.pathname.startsWith("/register");
+  const isAuthRoute = isLoginRoute || isRegisterRoute;
 
-  if (isAuthRoute && isLoggedIn) {
+  if (isLoginRoute && isLoggedIn) {
     return Response.redirect(new URL("/dashboard", req.url));
   }
   if (!isAuthRoute && !isLoggedIn && req.nextUrl.pathname !== "/") {
