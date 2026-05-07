@@ -25,7 +25,7 @@ function hasProjectManagerPower(projectRole?: string | null): boolean {
   return projectRole === "PROJECT_MANAGER";
 }
 
-/** ADMIN can create and manage their own firm/project space. */
+/** ADMIN has global system access. */
 export function isAdmin(role: string): role is "ADMIN" {
   return role === "ADMIN";
 }
@@ -35,7 +35,7 @@ export function canManageUsers(role: string): boolean {
   return role === "ADMIN";
 }
 
-/** User can manage this project when they own it or have project-manager membership. */
+/** User can manage this project when they are ADMIN, own it, or have project-manager membership. */
 export function canManageProject(
   role: string,
   projectManagerId: string,
@@ -43,6 +43,7 @@ export function canManageProject(
   projectRole?: string | null
 ): boolean {
   return (
+    role === "ADMIN" ||
     ((role === "ADMIN" || role === "MANAGER") && projectManagerId === userId) ||
     hasProjectManagerPower(projectRole)
   );
@@ -88,7 +89,7 @@ export function canAssignTask(
   return canManageTasksInProject(role, projectManagerId, userId, projectRole);
 }
 
-/** User can edit this task: ADMIN/manager can edit any; MEMBER only own (assigneeId === userId) */
+/** User can edit task content/status: ADMIN/project manager can edit any; project MEMBER can work in the project. */
 export function canEditTask(
   role: string,
   projectManagerId: string,
@@ -98,10 +99,11 @@ export function canEditTask(
 ): boolean {
   if (!userId) return false;
   if (canManageTasksInProject(role, projectManagerId, userId, projectRole)) return true;
+  if (projectRole === "MEMBER") return true;
   return role === "MEMBER" && !!taskAssigneeId && taskAssigneeId === userId;
 }
 
-/** User can move (drag) this task: ADMIN/manager any; MEMBER only own */
+/** User can move (drag) this task using the same rules as editing task status. */
 export function canMoveTask(
   role: string,
   projectManagerId: string,
@@ -112,12 +114,12 @@ export function canMoveTask(
   return canEditTask(role, projectManagerId, userId, taskAssigneeId, projectRole);
 }
 
-/** User has at least read access to this project as owner or member. */
+/** User has at least read access to this project as ADMIN, owner, or member. */
 export function canAccessProject(
   role: string,
   projectManagerId: string,
   userId: string,
   isMember: boolean
 ): boolean {
-  return projectManagerId === userId || isMember;
+  return role === "ADMIN" || projectManagerId === userId || isMember;
 }

@@ -4,19 +4,36 @@ import { notFound } from "next/navigation";
 import { canManageProject } from "@/lib/rbac";
 import { ProjectHeader } from "@/components/ProjectHeader";
 import { KanbanBoard } from "@/components/KanbanBoard";
+import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
 
 async function getProject(id: string, userId: string, role: string) {
   const project = await prisma.project.findFirst({
-    where: {
-      id,
-      OR: [
-        { managerId: userId },
-        { members: { some: { userId } } },
-      ],
-    },
+    where:
+      role === "ADMIN"
+        ? { id }
+        : {
+            id,
+            OR: [
+              { managerId: userId },
+              { members: { some: { userId } } },
+            ],
+          },
     include: {
-      manager: { select: { name: true } },
-      members: { include: { user: { select: { id: true, name: true } } } },
+      manager: { select: { id: true, name: true, email: true } },
+      members: {
+        include: { user: { select: { id: true, name: true, email: true } } },
+      },
+      invitations: {
+        where: { acceptedAt: null, expiresAt: { gt: new Date() } },
+        select: {
+          id: true,
+          email: true,
+          role: true,
+          expiresAt: true,
+          inviter: { select: { name: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      },
       tasks: {
         orderBy: [{ status: "asc" }, { position: "asc" }],
         include: { assignee: { select: { id: true, name: true } } },
@@ -50,8 +67,19 @@ export default async function ProjectKanbanPage({
   );
 
   const members = project.members.map((m) => m.user);
-  const managerUser = { id: project.managerId, name: project.manager.name };
+  const managerUser = {
+    id: project.managerId,
+    name: project.manager.name,
+    email: project.manager.email,
+  };
   const allMembers = [managerUser, ...members.filter((m) => m.id !== project.managerId)];
+  const teamMembers = [
+    {
+      role: "PROJECT_MANAGER",
+      user: managerUser,
+    },
+    ...project.members.filter((m) => m.userId !== project.managerId),
+  ];
 
   const allUsers = canEditProject
     ? await prisma.user.findMany({
@@ -66,6 +94,14 @@ export default async function ProjectKanbanPage({
         project={project}
         canEditProject={canEditProject}
         allUsers={allUsers}
+      />
+
+      <ProjectMembersPanel
+        projectId={project.id}
+        managerId={project.managerId}
+        members={teamMembers}
+        pendingInvitations={project.invitations}
+        canManage={canEditProject}
       />
 
       <KanbanBoard

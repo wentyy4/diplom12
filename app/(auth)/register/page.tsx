@@ -77,13 +77,13 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         <div className="flex justify-center mb-2">
           <ShieldCheck className="h-12 w-12 text-primary" />
         </div>
-        <CardTitle className="text-2xl">Create admin account</CardTitle>
+        <CardTitle className="text-2xl">Create account</CardTitle>
         <CardDescription>
-          Register freely. Your account will be created as an administrator.
+          Create your account and start managing your own projects.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <RegisterForm mode="admin" />
+        <RegisterForm mode="signup" />
       </CardContent>
     </Card>
   );

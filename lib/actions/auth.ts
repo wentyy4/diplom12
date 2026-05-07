@@ -3,12 +3,13 @@
 import { signIn, signOut } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import bcrypt from "bcryptjs";
+import { AuthError } from "next-auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isValidEmail } from "@/lib/validations";
 import { isInviteRole, type Role } from "@/lib/rbac";
 
-/** Registration is open: direct sign-up creates a new administrator account. */
+/** Registration is open: direct sign-up creates a manager account for own projects. */
 export async function isBootstrapMode(): Promise<boolean> {
   return true;
 }
@@ -55,13 +56,20 @@ export async function login(formData: FormData) {
   if (!isValidEmail(email)) {
     return { error: "Invalid email format" };
   }
-  const result = await signIn("credentials", {
-    email,
-    password,
-    redirect: false,
-  });
-  if (result?.error) {
-    return { error: "Invalid email or password" };
+  try {
+    const result = await signIn("credentials", {
+      email,
+      password,
+      redirect: false,
+    });
+    if (result?.error) {
+      return { error: "Invalid email or password" };
+    }
+  } catch (error) {
+    if (error instanceof AuthError) {
+      return { error: "Invalid email or password" };
+    }
+    throw error;
   }
   revalidatePath("/");
   redirect("/dashboard");
@@ -70,7 +78,10 @@ export async function login(formData: FormData) {
 /**
  * Registration flow:
  * 1. With token: create an invited participant using the invitation role/scope.
- * 2. Without token: create a new independent ADMIN account.
+ * 2. Without token: create a MANAGER account for managing own projects.
+ *
+ * Client-submitted role fields are intentionally ignored. The public form
+ * cannot create ADMIN accounts.
  */
 export async function register(formData: FormData) {
   const name = formData.get("name") as string;
@@ -102,7 +113,7 @@ export async function register(formData: FormData) {
     if (!formEmail) return { error: "Email is required" };
     if (!isValidEmail(formEmail)) return { error: "Invalid email format" };
     email = formEmail.toLowerCase();
-    role = "ADMIN";
+    role = "MANAGER";
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });

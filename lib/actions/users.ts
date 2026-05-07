@@ -31,9 +31,9 @@ function buildInviteLink(token: string): string {
 }
 
 /**
- * ADMIN-only. Creates a single-use, time-limited invitation pinned to an
- * email, optional project, and target role. Returns the registration link the admin can
- * paste into an email or chat (TODO: integrate SMTP via sendEmail()).
+ * Creates a single-use, time-limited invitation pinned to an email, optional
+ * project, and target role. ADMIN can invite globally; ADMIN or the project's
+ * manager/project-manager can invite users to that project.
  *
  * If a non-accepted, non-expired invitation already exists for the same
  * email, it is replaced — preventing accidental token leakage.
@@ -41,9 +41,6 @@ function buildInviteLink(token: string): string {
 export async function createInvitation(formData: FormData) {
   const session = await auth();
   if (!session?.user?.id) return { error: "Unauthorized" };
-  if (!canManageUsers(session.user.role as string)) {
-    return { error: "Only Admin can invite users" };
-  }
 
   const emailRaw = (formData.get("email") as string)?.trim().toLowerCase();
   const roleRaw = (formData.get("role") as string)?.trim();
@@ -64,6 +61,9 @@ export async function createInvitation(formData: FormData) {
       })
     : null;
   if (projectId && !project) return { error: "Project not found" };
+  if (!project && !canManageUsers(session.user.role as string)) {
+    return { error: "Only Admin can invite users to the firm" };
+  }
   if (project) {
     const membership = project.members.find(
       (member) => member.userId === session.user.id
@@ -148,18 +148,37 @@ export async function createInvitation(formData: FormData) {
   };
 }
 
-/** ADMIN-only. Deletes a pending invitation. */
+/** Deletes a pending invitation. ADMIN can revoke any; project managers can revoke project invites they manage. */
 export async function revokeInvitation(invitationId: string) {
   const session = await auth();
   if (!session?.user?.id) return { error: "Unauthorized" };
-  if (!canManageUsers(session.user.role as string)) {
-    return { error: "Only Admin can revoke invitations" };
-  }
-  const inv = await prisma.invitation.findUnique({ where: { id: invitationId } });
+  const inv = await prisma.invitation.findUnique({
+    where: { id: invitationId },
+    include: { project: { include: { members: true } } },
+  });
   if (!inv) return { error: "Invitation not found" };
   if (inv.acceptedAt) return { error: "Cannot revoke an accepted invitation" };
+  if (!canManageUsers(session.user.role as string)) {
+    if (!inv.project) {
+      return { error: "Only Admin can revoke firm invitations" };
+    }
+    const membership = inv.project.members.find(
+      (member) => member.userId === session.user.id
+    );
+    if (
+      !canManageProject(
+        session.user.role as string,
+        inv.project.managerId,
+        session.user.id,
+        membership?.role
+      )
+    ) {
+      return { error: "You can only revoke invitations for your own projects" };
+    }
+  }
   await prisma.invitation.delete({ where: { id: invitationId } });
   revalidatePath("/users");
+  if (inv.projectId) revalidatePath(`/projects/${inv.projectId}`);
   return { success: true };
 }
 

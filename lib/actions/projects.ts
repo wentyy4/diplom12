@@ -125,3 +125,47 @@ export async function deleteProject(id: string) {
   revalidatePath("/projects");
   return { success: true };
 }
+
+/** Removes a user from a project. The project owner cannot be removed. */
+export async function removeProjectMember(projectId: string, userId: string) {
+  const session = await auth();
+  if (!session?.user?.id) return { error: "Unauthorized" };
+
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: { members: true },
+  });
+  if (!project) return { error: "Project not found" };
+  if (userId === project.managerId) {
+    return { error: "Project owner cannot be removed" };
+  }
+
+  const userProjectRole =
+    project.members.find((m) => m.userId === session.user.id)?.role ?? null;
+
+  if (
+    !canManageProject(
+      session.user.role as string,
+      project.managerId,
+      session.user.id,
+      userProjectRole
+    )
+  ) {
+    return { error: "Access denied: only project manager or admin can remove members" };
+  }
+
+  await prisma.$transaction([
+    prisma.projectMember.deleteMany({
+      where: { projectId, userId },
+    }),
+    prisma.task.updateMany({
+      where: { projectId, assigneeId: userId },
+      data: { assigneeId: null },
+    }),
+  ]);
+
+  revalidatePath("/dashboard");
+  revalidatePath("/projects");
+  revalidatePath(`/projects/${projectId}`);
+  return { success: true };
+}

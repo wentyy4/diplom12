@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 
 type RegisterFormProps = {
-  mode: "admin" | "invitation";
+  mode: "signup" | "invitation";
   token?: string;
   email?: string;
   role?: "ADMIN" | "MANAGER" | "MEMBER";
@@ -56,7 +56,7 @@ export function RegisterForm({ mode, token, email, role, projectName }: Register
           name="email"
           type="email"
           placeholder="you@example.com"
-          required={mode === "admin"}
+          required={mode === "signup"}
           readOnly={mode === "invitation"}
           defaultValue={email}
           className={mode === "invitation" ? "bg-muted" : undefined}
@@ -97,8 +97,8 @@ export function RegisterForm({ mode, token, email, role, projectName }: Register
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting
           ? "Creating account…"
-          : mode === "admin"
-            ? "Create admin account"
+          : mode === "signup"
+            ? "Create account"
             : "Accept & create account"}
       </Button>
 

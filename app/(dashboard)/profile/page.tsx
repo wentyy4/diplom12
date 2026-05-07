@@ -85,9 +85,20 @@ async function getProfileData(userId: string, role: string) {
   user.managedProjects.forEach((project) => projectMap.set(project.id, project));
   user.memberProjects.forEach(({ project }) => projectMap.set(project.id, project));
 
-  const visibleProjects = Array.from(projectMap.values()).sort(
-    (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
-  );
+  const visibleProjects =
+    role === "ADMIN"
+      ? await prisma.project.findMany({
+          select: {
+            id: true,
+            name: true,
+            updatedAt: true,
+            _count: { select: { tasks: true, members: true } },
+          },
+          orderBy: { updatedAt: "desc" },
+        })
+      : Array.from(projectMap.values()).sort(
+          (a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()
+        );
 
   const completedTasks = user.assignedTasks.filter(
     (task) => task.status === "DONE"

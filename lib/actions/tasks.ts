@@ -19,7 +19,8 @@ function isTaskStatus(status: string): status is (typeof TASK_STATUSES)[number] 
 }
 
 /**
- * Resolve project and check access. Users can access projects they own or belong to.
+ * Resolve project and check access. ADMIN can access every project; others
+ * must own the project or belong to it.
  */
 async function ensureProjectAccess(
   projectId: string,
@@ -35,7 +36,7 @@ async function ensureProjectAccess(
   const isManager = project.managerId === userId;
   const membership = project.members.find((m) => m.userId === userId);
   const isMember = !!membership;
-  const hasAccess = isManager || isMember;
+  const hasAccess = role === "ADMIN" || isManager || isMember;
   if (!hasAccess) return { error: "Access denied" as const, project: null };
 
   return { error: null, project };

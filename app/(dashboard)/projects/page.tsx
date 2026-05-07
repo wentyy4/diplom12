@@ -25,12 +25,15 @@ async function getAllUsers() {
 
 async function getProjects(userId: string, role: string) {
   return prisma.project.findMany({
-    where: {
-      OR: [
-        { managerId: userId },
-        { members: { some: { userId } } },
-      ],
-    },
+    where:
+      role === "ADMIN"
+        ? {}
+        : {
+            OR: [
+              { managerId: userId },
+              { members: { some: { userId } } },
+            ],
+          },
     include: {
       manager: { select: { name: true } },
       members: { include: { user: { select: { id: true, name: true } } } },
