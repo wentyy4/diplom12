@@ -230,8 +230,6 @@ export async function moveTask(
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task) return { error: "Task not found" };
   if (task.projectId !== projectId) return { error: "Task not found" };
-  if (task.projectId !== projectId) return { error: "Task not found" };
-  if (task.projectId !== projectId) return { error: "Task not found" };
 
   const userProjectRole =
     project.members.find((m) => m.userId === session.user.id)?.role ?? null;
