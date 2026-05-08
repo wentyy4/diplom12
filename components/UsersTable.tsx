@@ -132,7 +132,7 @@ export function UsersTable({
                       {u.role}
                     </Badge>
                     <Select
-                      disabled={pending}
+                      disabled={pending || isSelf}
                       value={u.role}
                       onValueChange={(v) => handleRoleChange(u, v)}
                     >

@@ -49,6 +49,7 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
           <CardDescription>
             You&apos;ve been invited to join as{" "}
             <span className="font-semibold">{inv.role}</span>
+            {" "}at <span className="font-semibold">{inv.firm.name}</span>
             {inv.project ? (
               <>
                 {" "}
@@ -79,7 +80,7 @@ export default async function RegisterPage({ searchParams }: RegisterPageProps) 
         </div>
         <CardTitle className="text-2xl">Create account</CardTitle>
         <CardDescription>
-          Create your account and start managing your own projects.
+          Create your firm workspace and become its administrator.
         </CardDescription>
       </CardHeader>
       <CardContent>

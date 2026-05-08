@@ -20,12 +20,13 @@ import { DashboardKanbanPreview } from "@/components/DashboardKanbanPreview";
 import { DashboardChart } from "@/components/DashboardChart";
 import { RecentTasks } from "@/components/RecentTasks";
 
-async function getDashboardData(userId: string, role: string) {
+async function getDashboardData(userId: string, role: string, firmId: string) {
   const projects = await prisma.project.findMany({
     where:
       role === "ADMIN"
-        ? {}
+        ? { firmId }
         : {
+            firmId,
             OR: [
               { managerId: userId },
               { members: { some: { userId } } },
@@ -93,10 +94,14 @@ function StatsSkeleton() {
 
 export default async function DashboardPage() {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.firmId) return null;
 
   const { projects, allTasks, stats, recentTasks, tasksByStatus } =
-    await getDashboardData(session.user.id, session.user.role as string);
+    await getDashboardData(
+      session.user.id,
+      session.user.role as string,
+      session.user.firmId
+    );
 
   return (
     <div className="space-y-8">

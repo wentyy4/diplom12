@@ -13,23 +13,34 @@ import { InvitationsTable } from "@/components/InvitationsTable";
 import { InviteUserButton } from "@/components/InviteUserButton";
 import { Users as UsersIcon } from "lucide-react";
 
-async function getUsers() {
+async function getUsers(firmId: string) {
   return prisma.user.findMany({
+    where: { firmMemberships: { some: { firmId } } },
     select: {
       id: true,
       name: true,
       email: true,
       role: true,
       createdAt: true,
+      firmMemberships: {
+        where: { firmId },
+        select: { role: true },
+      },
       _count: { select: { managedProjects: true, assignedTasks: true } },
     },
     orderBy: { createdAt: "asc" },
-  });
+  }).then((users) =>
+    users.map((user) => ({
+      ...user,
+      role: user.firmMemberships[0]?.role ?? user.role,
+      firmMemberships: undefined,
+    }))
+  );
 }
 
-async function getPendingInvitations() {
+async function getPendingInvitations(firmId: string) {
   return prisma.invitation.findMany({
-    where: { acceptedAt: null, expiresAt: { gt: new Date() } },
+    where: { firmId, acceptedAt: null, expiresAt: { gt: new Date() } },
     select: {
       id: true,
       email: true,
@@ -46,14 +57,14 @@ async function getPendingInvitations() {
 
 export default async function UsersPage() {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.firmId) return null;
   if (!canManageUsers(session.user.role as string)) {
     redirect("/forbidden");
   }
 
   const [users, invitations] = await Promise.all([
-    getUsers(),
-    getPendingInvitations(),
+    getUsers(session.user.firmId),
+    getPendingInvitations(session.user.firmId),
   ]);
 
   return (

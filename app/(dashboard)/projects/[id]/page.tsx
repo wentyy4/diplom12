@@ -6,13 +6,14 @@ import { ProjectHeader } from "@/components/ProjectHeader";
 import { KanbanBoard } from "@/components/KanbanBoard";
 import { ProjectMembersPanel } from "@/components/ProjectMembersPanel";
 
-async function getProject(id: string, userId: string, role: string) {
+async function getProject(id: string, userId: string, role: string, firmId: string) {
   const project = await prisma.project.findFirst({
     where:
       role === "ADMIN"
-        ? { id }
+        ? { id, firmId }
         : {
             id,
+            firmId,
             OR: [
               { managerId: userId },
               { members: { some: { userId } } },
@@ -49,10 +50,15 @@ export default async function ProjectKanbanPage({
   params: Promise<{ id: string }>;
 }) {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.firmId) return null;
 
   const { id } = await params;
-  const project = await getProject(id, session.user.id, session.user.role as string);
+  const project = await getProject(
+    id,
+    session.user.id,
+    session.user.role as string,
+    session.user.firmId
+  );
   if (!project) notFound();
 
   const role = session.user.role as string;
@@ -83,6 +89,7 @@ export default async function ProjectKanbanPage({
 
   const allUsers = canEditProject
     ? await prisma.user.findMany({
+        where: { firmMemberships: { some: { firmId: session.user.firmId } } },
         select: { id: true, name: true },
         orderBy: { name: "asc" },
       })

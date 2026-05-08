@@ -2,7 +2,7 @@
 
 **Development of an Information System for IT Project Management** - a diploma thesis project.
 
-A local web application for IT teams to create and manage projects, invite participants, track tasks on a Kanban board, assign roles, and monitor project progress.
+A local web application for IT teams to create firm workspaces, manage projects, invite participants, track tasks on a Kanban board, assign roles, and monitor project progress.
 
 ## Tech Stack
 
@@ -89,7 +89,8 @@ prisma/
 ## Features
 
 - **Auth**: sign up, sign in, sign out
-- **Roles**: system admin, project manager, project member
+- **Firms**: each direct registrant creates a firm and becomes its admin
+- **Roles**: firm admin, project manager, project member
 - **Projects**: create, edit, delete, invite users, remove project members
 - **Kanban board**: To Do, In Progress, Done
 - **Tasks**: create, edit, move, delete, assign users according to RBAC rules

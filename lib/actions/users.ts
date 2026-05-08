@@ -39,7 +39,8 @@ function buildInviteLink(token: string): string {
  */
 export async function createInvitation(formData: FormData) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
+  const firmId = session.user.firmId;
 
   const emailRaw = (formData.get("email") as string)?.trim().toLowerCase();
   const roleRaw = (formData.get("role") as string)?.trim();
@@ -60,6 +61,9 @@ export async function createInvitation(formData: FormData) {
       })
     : null;
   if (projectId && !project) return { error: "Project not found" };
+  if (project && project.firmId !== firmId) {
+    return { error: "Project not found" };
+  }
   if (!project && !canManageUsers(session.user.role as string)) {
     return { error: "Only Admin can invite users to the firm" };
   }
@@ -81,47 +85,73 @@ export async function createInvitation(formData: FormData) {
 
   const existingUser = await prisma.user.findUnique({ where: { email: emailRaw } });
   if (existingUser) {
-    if (!projectId) {
-      return { error: "A user with this email is already registered" };
+    if (existingUser.id === session.user.id) {
+      return {
+        error: projectId
+          ? "You cannot change your own project role"
+          : "You cannot invite yourself to change your own firm role",
+      };
     }
-    await prisma.projectMember.upsert({
+    const existingMembership = await prisma.firmMember.findUnique({
       where: {
-        projectId_userId: {
-          projectId,
+        firmId_userId: {
+          firmId,
           userId: existingUser.id,
         },
       },
-      update: {
-        role: role === "MANAGER" ? "PROJECT_MANAGER" : "MEMBER",
-      },
-      create: {
-        projectId,
-        userId: existingUser.id,
-        role: role === "MANAGER" ? "PROJECT_MANAGER" : "MEMBER",
-      },
     });
-    // If the user gains project-manager rights inside a project, lift their
-    // global role from MEMBER to MANAGER so they can also create their own
-    // projects. ADMINs stay ADMIN; existing MANAGERs are unchanged.
-    if (role === "MANAGER" && existingUser.role === "MEMBER") {
-      await prisma.user.update({
-        where: { id: existingUser.id },
-        data: { role: "MANAGER" },
+    if (!projectId) {
+      if (existingMembership) {
+        return { error: "A user with this email is already in this firm" };
+      }
+    } else if (existingMembership) {
+      await prisma.projectMember.upsert({
+        where: {
+          projectId_userId: {
+            projectId,
+            userId: existingUser.id,
+          },
+        },
+        update: {
+          role: role === "MANAGER" ? "PROJECT_MANAGER" : "MEMBER",
+        },
+        create: {
+          projectId,
+          userId: existingUser.id,
+          role: role === "MANAGER" ? "PROJECT_MANAGER" : "MEMBER",
+        },
       });
+      if (role === "MANAGER" && existingMembership.role === "MEMBER") {
+        await prisma.firmMember.update({
+          where: {
+            firmId_userId: {
+              firmId,
+              userId: existingUser.id,
+            },
+          },
+          data: { role: "MANAGER" },
+        });
+        if (existingUser.firmId === firmId) {
+          await prisma.user.update({
+            where: { id: existingUser.id },
+            data: { role: "MANAGER" },
+          });
+        }
+      }
+      revalidatePath("/users");
+      revalidatePath("/projects");
+      revalidatePath(`/projects/${projectId}`);
+      return {
+        success: true,
+        addedExistingUser: true,
+        projectName: project?.name,
+      };
     }
-    revalidatePath("/users");
-    revalidatePath("/projects");
-    revalidatePath(`/projects/${projectId}`);
-    return {
-      success: true,
-      addedExistingUser: true,
-      projectName: project?.name,
-    };
   }
 
   // Drop any prior pending invitations for the same email to avoid two live tokens.
   await prisma.invitation.deleteMany({
-    where: { email: emailRaw, acceptedAt: null, projectId },
+    where: { email: emailRaw, acceptedAt: null, projectId, firmId },
   });
 
   const token = newToken();
@@ -134,6 +164,7 @@ export async function createInvitation(formData: FormData) {
       token,
       expiresAt,
       invitedBy: session.user.id,
+      firmId,
       projectId,
     },
   });
@@ -153,12 +184,14 @@ export async function createInvitation(formData: FormData) {
 /** Deletes a pending invitation. ADMIN can revoke any; project managers can revoke project invites they manage. */
 export async function revokeInvitation(invitationId: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
+  const firmId = session.user.firmId;
   const inv = await prisma.invitation.findUnique({
     where: { id: invitationId },
     include: { project: { include: { members: true } } },
   });
   if (!inv) return { error: "Invitation not found" };
+  if (inv.firmId !== firmId) return { error: "Invitation not found" };
   if (inv.acceptedAt) return { error: "Cannot revoke an accepted invitation" };
   if (!canManageUsers(session.user.role as string)) {
     if (!inv.project) {
@@ -191,28 +224,58 @@ export async function revokeInvitation(invitationId: string) {
  */
 export async function updateUserRole(userId: string, newRole: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
+  const firmId = session.user.firmId;
   if (!canManageUsers(session.user.role as string)) {
     return { error: "Only Admin can change user roles" };
+  }
+  if (userId === session.user.id) {
+    return { error: "You cannot change your own firm role" };
   }
   if (!isRole(newRole)) return { error: "Invalid role" };
 
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target) return { error: "User not found" };
-  if (target.role === newRole) return { success: true };
+  const targetMembership = await prisma.firmMember.findUnique({
+    where: {
+      firmId_userId: {
+        firmId,
+        userId,
+      },
+    },
+  });
+  if (!targetMembership) return { error: "User not found" };
+  if (targetMembership.role === newRole) return { success: true };
 
   // Block demoting the last ADMIN.
-  if (target.role === "ADMIN" && newRole !== "ADMIN") {
-    const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+  if (targetMembership.role === "ADMIN" && newRole !== "ADMIN") {
+    const adminCount = await prisma.user.count({
+      where: {
+        firmMemberships: {
+          some: { firmId, role: "ADMIN" },
+        },
+      },
+    });
     if (adminCount <= 1) {
       return { error: "Cannot demote the last administrator" };
     }
   }
 
-  await prisma.user.update({
-    where: { id: userId },
+  await prisma.firmMember.update({
+    where: {
+      firmId_userId: {
+        firmId,
+        userId,
+      },
+    },
     data: { role: newRole },
   });
+  if (target.firmId === firmId) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: { role: newRole },
+    });
+  }
   revalidatePath("/users");
   return { success: true };
 }
@@ -224,7 +287,8 @@ export async function updateUserRole(userId: string, newRole: string) {
  */
 export async function deleteUser(userId: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
+  const firmId = session.user.firmId;
   if (!canManageUsers(session.user.role as string)) {
     return { error: "Only Admin can delete users" };
   }
@@ -233,15 +297,61 @@ export async function deleteUser(userId: string) {
   }
   const target = await prisma.user.findUnique({ where: { id: userId } });
   if (!target) return { error: "User not found" };
+  const targetMembership = await prisma.firmMember.findUnique({
+    where: {
+      firmId_userId: {
+        firmId,
+        userId,
+      },
+    },
+  });
+  if (!targetMembership) return { error: "User not found" };
 
-  if (target.role === "ADMIN") {
-    const adminCount = await prisma.user.count({ where: { role: "ADMIN" } });
+  if (targetMembership.role === "ADMIN") {
+    const adminCount = await prisma.user.count({
+      where: {
+        firmMemberships: {
+          some: { firmId, role: "ADMIN" },
+        },
+      },
+    });
     if (adminCount <= 1) {
       return { error: "Cannot delete the last administrator" };
     }
   }
 
-  await prisma.user.delete({ where: { id: userId } });
+  await prisma.$transaction(async (tx) => {
+    await tx.projectMember.deleteMany({
+      where: { userId, project: { firmId } },
+    });
+    await tx.task.updateMany({
+      where: { assigneeId: userId, project: { firmId } },
+      data: { assigneeId: null },
+    });
+    await tx.firmMember.delete({
+      where: {
+        firmId_userId: {
+          firmId,
+          userId,
+        },
+      },
+    });
+    const remainingMembership = await tx.firmMember.findFirst({
+      where: { userId },
+      select: { firmId: true, role: true },
+    });
+    if (!remainingMembership) {
+      await tx.user.delete({ where: { id: userId } });
+    } else if (target.firmId === firmId) {
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          firmId: remainingMembership.firmId,
+          role: remainingMembership.role,
+        },
+      });
+    }
+  });
   revalidatePath("/users");
   return { success: true };
 }

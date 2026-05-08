@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Search, FolderKanban, ListChecks } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
-async function searchData(userId: string, role: string, query: string) {
+async function searchData(userId: string, role: string, firmId: string, query: string) {
   if (!query?.trim() || query.trim().length < 2) {
     return { projects: [], tasks: [] };
   }
@@ -14,8 +14,9 @@ async function searchData(userId: string, role: string, query: string) {
   const q = query.trim().toLowerCase();
   const projectAccessFilter =
     role === "ADMIN"
-      ? {}
+      ? { firmId }
       : {
+          firmId,
           OR: [
             { managerId: userId },
             { members: { some: { userId } } },
@@ -65,12 +66,13 @@ export default async function SearchPage({
   searchParams: Promise<{ q?: string }>;
 }) {
   const session = await auth();
-  if (!session?.user?.id) redirect("/login");
+  if (!session?.user?.id || !session.user.firmId) redirect("/login");
 
   const { q } = await searchParams;
   const { projects, tasks } = await searchData(
     session.user.id,
     session.user.role as string,
+    session.user.firmId,
     q ?? ""
   );
 

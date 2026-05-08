@@ -17,13 +17,17 @@ export async function getInvitationByToken(token: string): Promise<
       role: Exclude<Role, "ADMIN">;
       expiresAt: Date;
       project: { id: string; name: string } | null;
+      firm: { id: string; name: string };
     }
   | { ok: false; error: string }
 > {
   if (!token || token.length < 16) return { ok: false, error: "Invalid token" };
   const inv = await prisma.invitation.findUnique({
     where: { token },
-    include: { project: { select: { id: true, name: true } } },
+    include: {
+      firm: { select: { id: true, name: true } },
+      project: { select: { id: true, name: true } },
+    },
   });
   if (!inv) return { ok: false, error: "Invitation not found" };
   if (inv.acceptedAt) return { ok: false, error: "Invitation already used" };
@@ -39,6 +43,7 @@ export async function getInvitationByToken(token: string): Promise<
     role: inv.role,
     expiresAt: inv.expiresAt,
     project: inv.project,
+    firm: inv.firm,
   };
 }
 
@@ -73,10 +78,10 @@ export async function login(formData: FormData) {
 /**
  * Registration flow:
  * 1. With token: create an invited participant using the invitation role/scope.
- * 2. Without token: create a MANAGER account for managing own projects.
+ * 2. Without token: create a new firm and make the registrant its ADMIN.
  *
  * Client-submitted role fields are intentionally ignored. The public form
- * cannot create ADMIN accounts.
+ * cannot choose roles across existing firms.
  */
 export async function register(formData: FormData) {
   const name = formData.get("name") as string;
@@ -95,6 +100,7 @@ export async function register(formData: FormData) {
   let role: Role;
   let consumeInvitationId: string | null = null;
   let projectInvitationId: string | null = null;
+  let invitationFirmId: string | null = null;
 
   if (token) {
     const inv = await getInvitationByToken(token);
@@ -104,26 +110,68 @@ export async function register(formData: FormData) {
     const row = await prisma.invitation.findUnique({ where: { token } });
     consumeInvitationId = row?.id ?? null;
     projectInvitationId = row?.projectId ?? null;
+    invitationFirmId = row?.firmId ?? null;
   } else {
     if (!formEmail) return { error: "Email is required" };
     if (!isValidEmail(formEmail)) return { error: "Invalid email format" };
     email = formEmail.toLowerCase();
-    role = "MANAGER";
+    role = "ADMIN";
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) return { error: "Email already registered" };
+  if (existing && !token) return { error: "Email already registered" };
 
   const hashed = await bcrypt.hash(passwordRaw, 10);
 
-  await prisma.$transaction(async (tx) => {
+  const inviteError = await prisma.$transaction(async (tx) => {
+    const firmId =
+      invitationFirmId ??
+      (
+        await tx.firm.create({
+          data: { name: `${name.trim()}'s firm` },
+          select: { id: true },
+        })
+      ).id;
     const userRole: Role = projectInvitationId ? "MEMBER" : role;
-    const user = await tx.user.create({
+    const user = existing
+      ? existing
+      : await tx.user.create({
+          data: {
+            name: name.trim(),
+            email,
+            password: hashed,
+            role: userRole,
+            firmId,
+          },
+        });
+
+    if (existing) {
+      const validPassword = await bcrypt.compare(passwordRaw, existing.password);
+      if (!validPassword) {
+        throw new Error("Invalid password for existing account");
+      }
+    }
+
+    await tx.firmMember.upsert({
+      where: {
+        firmId_userId: {
+          firmId,
+          userId: user.id,
+        },
+      },
+      update: { role },
+      create: {
+        firmId,
+        userId: user.id,
+        role,
+      },
+    });
+
+    await tx.user.update({
+      where: { id: user.id },
       data: {
-        name: name.trim(),
-        email,
-        password: hashed,
-        role: userRole,
+        firmId,
+        role,
       },
     });
 
@@ -152,7 +200,14 @@ export async function register(formData: FormData) {
         data: { acceptedAt: new Date() },
       });
     }
+    return null;
+  }).catch((error) => {
+    if (error instanceof Error && error.message === "Invalid password for existing account") {
+      return { error: "This email already has an account. Enter its current password to accept the invitation." };
+    }
+    throw error;
   });
+  if (inviteError) return inviteError;
 
   revalidatePath("/");
   revalidatePath("/users");

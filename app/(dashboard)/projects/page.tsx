@@ -16,19 +16,21 @@ import { canManageProject } from "@/lib/rbac";
 import { ProjectsTable } from "@/components/ProjectsTable";
 import { DeleteProjectButton } from "@/components/DeleteProjectButton";
 
-async function getAllUsers() {
+async function getAllUsers(firmId: string) {
   return prisma.user.findMany({
+    where: { firmMemberships: { some: { firmId } } },
     select: { id: true, name: true },
     orderBy: { name: "asc" },
   });
 }
 
-async function getProjects(userId: string, role: string) {
+async function getProjects(userId: string, role: string, firmId: string) {
   return prisma.project.findMany({
     where:
       role === "ADMIN"
-        ? {}
+        ? { firmId }
         : {
+            firmId,
             OR: [
               { managerId: userId },
               { members: { some: { userId } } },
@@ -45,12 +47,12 @@ async function getProjects(userId: string, role: string) {
 
 export default async function ProjectsPage() {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.firmId) return null;
 
   const canManage = session.user.role === "ADMIN" || session.user.role === "MANAGER";
   const [projects, allUsers] = await Promise.all([
-    getProjects(session.user.id, session.user.role as string),
-    canManage ? getAllUsers() : Promise.resolve([]),
+    getProjects(session.user.id, session.user.role as string, session.user.firmId),
+    canManage ? getAllUsers(session.user.firmId) : Promise.resolve([]),
   ]);
 
   return (

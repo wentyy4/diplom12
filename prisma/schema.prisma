@@ -10,20 +10,54 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Firm {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users       User[]
+  members     FirmMember[]
+  projects    Project[]
+  invitations Invitation[]
+
+  @@map("firms")
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
   email     String   @unique
   password  String
   role      String   @default("MEMBER") // ADMIN | MANAGER | MEMBER
+  firmId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  managedProjects Project[]     @relation("ProjectManager")
+  firm            Firm            @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  firmMemberships FirmMember[]
+  managedProjects Project[]       @relation("ProjectManager")
   memberProjects  ProjectMember[]
   assignedTasks   Task[]
-  sentInvitations Invitation[]  @relation("InvitationInviter")
+  sentInvitations Invitation[]    @relation("InvitationInviter")
+
+  @@index([firmId])
   @@map("users")
+}
+
+model FirmMember {
+  id       String   @id @default(cuid())
+  firmId   String
+  userId   String
+  role     String   @default("MEMBER") // ADMIN | MANAGER | MEMBER
+  joinedAt DateTime @default(now())
+
+  firm Firm @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([firmId, userId])
+  @@index([userId])
+  @@map("firm_members")
 }
 
 // Admin-issued invitations for new users to join the firm or a project with a pre-selected role.
@@ -32,17 +66,20 @@ model User {
 model Invitation {
   id         String    @id @default(cuid())
   email      String
-  role       String    // MANAGER | MEMBER
+  role       String // MANAGER | MEMBER
   token      String    @unique
   expiresAt  DateTime
   acceptedAt DateTime?
   invitedBy  String
+  firmId     String
   projectId  String?
+  firm       Firm      @relation(fields: [firmId], references: [id], onDelete: Cascade)
   inviter    User      @relation("InvitationInviter", fields: [invitedBy], references: [id], onDelete: Cascade)
   project    Project?  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   createdAt  DateTime  @default(now())
 
   @@index([email])
+  @@index([firmId])
   @@index([projectId])
   @@map("invitations")
 }
@@ -54,11 +91,15 @@ model Project {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   managerId   String
+  firmId      String
 
-  manager User          @relation("ProjectManager", fields: [managerId], references: [id], onDelete: Cascade)
-  members ProjectMember[]
-  tasks   Task[]
+  firm        Firm            @relation(fields: [firmId], references: [id], onDelete: Cascade)
+  manager     User            @relation("ProjectManager", fields: [managerId], references: [id], onDelete: Cascade)
+  members     ProjectMember[]
+  tasks       Task[]
   invitations Invitation[]
+
+  @@index([firmId])
   @@map("projects")
 }
 
@@ -77,19 +118,20 @@ model ProjectMember {
 }
 
 model Task {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   description String?
-  status      String   @default("TODO")    // TODO | IN_PROGRESS | DONE
-  priority    String   @default("MEDIUM")  // LOW | MEDIUM | HIGH
+  status      String    @default("TODO") // TODO | IN_PROGRESS | DONE
+  priority    String    @default("MEDIUM") // LOW | MEDIUM | HIGH
   deadline    DateTime?
-  position    Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   projectId   String
   assigneeId  String?
 
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   assignee User?   @relation(fields: [assigneeId], references: [id], onDelete: SetNull)
+
   @@map("tasks")
 }

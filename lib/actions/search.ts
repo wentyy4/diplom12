@@ -24,7 +24,7 @@ export async function searchGlobal(query: string): Promise<{
   error?: string;
 }> {
   const session = await auth();
-  if (!session?.user?.id) {
+  if (!session?.user?.id || !session.user.firmId) {
     return { projects: [], tasks: [], error: "Unauthorized" };
   }
 
@@ -36,10 +36,12 @@ export async function searchGlobal(query: string): Promise<{
   const qLower = q.toLowerCase();
   const userId = session.user.id;
   const role = session.user.role as string;
+  const firmId = session.user.firmId;
   const projectAccessFilter =
     role === "ADMIN"
-      ? {}
+      ? { firmId }
       : {
+          firmId,
           OR: [
             { managerId: userId },
             { members: { some: { userId } } },

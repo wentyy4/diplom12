@@ -78,6 +78,11 @@ export function RegisterForm({ mode, token, email, role, projectName }: Register
           required
         />
         <p className="text-xs text-muted-foreground">At least 6 characters.</p>
+        {mode === "invitation" && (
+          <p className="text-xs text-muted-foreground">
+            If this email already has an account, enter that account password.
+          </p>
+        )}
       </div>
 
       {mode === "invitation" && role && (
@@ -96,10 +101,10 @@ export function RegisterForm({ mode, token, email, role, projectName }: Register
 
       <Button type="submit" className="w-full" disabled={submitting}>
         {submitting
-          ? "Creating account…"
+          ? "Processing…"
           : mode === "signup"
             ? "Create account"
-            : "Accept & create account"}
+            : "Accept invitation"}
       </Button>
 
       <p className="text-center text-sm text-muted-foreground">

@@ -1,7 +1,7 @@
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const { handlers, signIn, signOut, auth, unstable_update: updateSession } = NextAuth({
   providers: [
     Credentials({
       name: "credentials",
@@ -27,15 +27,21 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           name: user.name,
           email: user.email,
           role: user.role,
+          firmId: user.firmId,
         };
       },
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.id = user.id;
         token.role = user.role;
+        token.firmId = user.firmId;
+      }
+      if (trigger === "update" && session?.user) {
+        if (session.user.role) token.role = session.user.role;
+        if (session.user.firmId) token.firmId = session.user.firmId;
       }
       return token;
     },
@@ -43,6 +49,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as string;
+        session.user.firmId = token.firmId as string;
       }
       return session;
     },

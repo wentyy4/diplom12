@@ -5,13 +5,15 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { NotificationsDropdown } from "@/components/NotificationsDropdown";
 import { NavbarSearch } from "@/components/NavbarSearch";
+import { FirmSwitcher } from "@/components/FirmSwitcher";
 
-async function getAlertTasks(userId: string, role?: string) {
+async function getAlertTasks(userId: string, firmId: string, role?: string) {
   const projects = await prisma.project.findMany({
     where:
       role === "ADMIN"
-        ? {}
+        ? { firmId }
         : {
+            firmId,
             OR: [
               { managerId: userId },
               { members: { some: { userId } } },
@@ -53,9 +55,18 @@ async function getAlertTasks(userId: string, role?: string) {
 
 export async function Navbar() {
   const session = await auth();
-  const { overdueTasks, dueSoonTasks } = session?.user?.id
-    ? await getAlertTasks(session.user.id, session.user.role)
-    : { overdueTasks: [], dueSoonTasks: [] };
+  const [{ overdueTasks, dueSoonTasks }, firms] =
+    session?.user?.id && session.user.firmId
+      ? await Promise.all([
+          getAlertTasks(session.user.id, session.user.firmId, session.user.role),
+          prisma.firmMember.findMany({
+            where: { userId: session.user.id },
+            select: { firm: { select: { id: true, name: true } } },
+            orderBy: { joinedAt: "asc" },
+          }),
+        ])
+      : [{ overdueTasks: [], dueSoonTasks: [] }, []];
+  const firmOptions = firms.map((membership) => membership.firm);
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-4 md:px-6">
@@ -63,6 +74,7 @@ export async function Navbar() {
         <NavbarSearch userId={session?.user?.id} />
       </div>
       <div className="flex items-center gap-2">
+        <FirmSwitcher firms={firmOptions} activeFirmId={session?.user?.firmId} />
         <ThemeToggle />
         <NotificationsDropdown
           overdueTasks={overdueTasks}

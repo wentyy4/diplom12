@@ -35,7 +35,7 @@ function formatDate(date: Date) {
   }).format(date);
 }
 
-async function getProfileData(userId: string, role: string) {
+async function getProfileData(userId: string, role: string, firmId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     include: {
@@ -43,6 +43,7 @@ async function getProfileData(userId: string, role: string) {
         select: {
           id: true,
           name: true,
+          firmId: true,
           updatedAt: true,
           _count: { select: { tasks: true, members: true } },
         },
@@ -54,6 +55,7 @@ async function getProfileData(userId: string, role: string) {
             select: {
               id: true,
               name: true,
+              firmId: true,
               updatedAt: true,
               _count: { select: { tasks: true, members: true } },
             },
@@ -62,35 +64,48 @@ async function getProfileData(userId: string, role: string) {
         orderBy: { joinedAt: "desc" },
       },
       assignedTasks: {
+        where: { project: { firmId } },
         include: {
           project: { select: { id: true, name: true } },
         },
         orderBy: { updatedAt: "desc" },
       },
+      firmMemberships: {
+        where: { firmId },
+        select: { role: true },
+      },
     },
   });
 
-  if (!user) return null;
+  const firmRole = user?.firmMemberships[0]?.role ?? null;
+  if (!user || !firmRole) return null;
 
   const projectMap = new Map<
     string,
     {
       id: string;
       name: string;
+      firmId: string;
       updatedAt: Date;
       _count: { tasks: number; members: number };
     }
   >();
 
-  user.managedProjects.forEach((project) => projectMap.set(project.id, project));
-  user.memberProjects.forEach(({ project }) => projectMap.set(project.id, project));
+  user.managedProjects
+    .filter((project) => project.firmId === firmId)
+    .forEach((project) => projectMap.set(project.id, project));
+  user.memberProjects
+    .filter(({ project }) => project.firmId === firmId)
+    .forEach(({ project }) => projectMap.set(project.id, project));
 
   const visibleProjects =
     role === "ADMIN"
       ? await prisma.project.findMany({
+          where: { firmId },
           select: {
             id: true,
             name: true,
+            firmId: true,
             updatedAt: true,
             _count: { select: { tasks: true, members: true } },
           },
@@ -109,6 +124,7 @@ async function getProfileData(userId: string, role: string) {
 
   return {
     user,
+    firmRole,
     visibleProjects,
     completedTasks,
     inProgressTasks,
@@ -118,16 +134,17 @@ async function getProfileData(userId: string, role: string) {
 
 export default async function ProfilePage() {
   const session = await auth();
-  if (!session?.user?.id) return null;
+  if (!session?.user?.id || !session.user.firmId) return null;
 
   const data = await getProfileData(
     session.user.id,
-    session.user.role as string
+    session.user.role as string,
+    session.user.firmId
   );
 
   if (!data) return null;
 
-  const { user, visibleProjects, completedTasks, inProgressTasks, openTasks } =
+  const { user, firmRole, visibleProjects, completedTasks, inProgressTasks, openTasks } =
     data;
   const initials = user.name.slice(0, 2).toUpperCase();
 
@@ -148,10 +165,10 @@ export default async function ProfilePage() {
             </Avatar>
             <div className="space-y-1">
               <CardTitle>{user.name}</CardTitle>
-              <CardDescription>{getRoleLabel(user.role)}</CardDescription>
+              <CardDescription>{getRoleLabel(firmRole)}</CardDescription>
             </div>
             <Badge variant="secondary" className="mt-2">
-              {user.role}
+              {firmRole}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -166,7 +183,7 @@ export default async function ProfilePage() {
               <ShieldCheck className="h-4 w-4 text-muted-foreground" />
               <div>
                 <p className="text-xs text-muted-foreground">Access level</p>
-                <p className="text-sm font-medium">{getRoleLabel(user.role)}</p>
+                <p className="text-sm font-medium">{getRoleLabel(firmRole)}</p>
               </div>
             </div>
             <div className="flex items-center gap-3 rounded-md border p-3">

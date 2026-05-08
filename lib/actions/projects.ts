@@ -8,7 +8,7 @@ import { canManageProject } from "@/lib/rbac";
 /** MANAGER can only create (and becomes manager); ADMIN can create. */
 export async function createProject(formData: FormData) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const role = session.user.role as string;
   if (role !== "ADMIN" && role !== "MANAGER") {
@@ -23,13 +23,21 @@ export async function createProject(formData: FormData) {
 
   if (!name?.trim()) return { error: "Project name is required" };
 
+  const firmMemberIds = memberIds.length
+    ? await prisma.firmMember.findMany({
+        where: { userId: { in: [...new Set(memberIds)] }, firmId: session.user.firmId },
+        select: { userId: true },
+      })
+    : [];
+
   const project = await prisma.project.create({
     data: {
       name: name.trim(),
       description: description.trim(),
       managerId: session.user.id,
+      firmId: session.user.firmId,
       members: {
-        create: [...new Set(memberIds)].map((userId) => ({ userId })),
+        create: firmMemberIds.map(({ userId }) => ({ userId })),
       },
     },
   });
@@ -44,13 +52,14 @@ export async function createProject(formData: FormData) {
  */
 export async function updateProject(id: string, formData: FormData) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const project = await prisma.project.findUnique({
     where: { id },
     include: { members: true },
   });
   if (!project) return { error: "Project not found" };
+  if (project.firmId !== session.user.firmId) return { error: "Project not found" };
 
   const userProjectRole =
     project.members.find((m) => m.userId === session.user.id)?.role ?? null;
@@ -68,10 +77,15 @@ export async function updateProject(id: string, formData: FormData) {
   if (!name?.trim()) return { error: "Project name is required" };
 
   const uniqueMemberIds = [...new Set(memberIds)];
+  const firmMemberIds = await prisma.firmMember.findMany({
+    where: { userId: { in: uniqueMemberIds }, firmId: session.user.firmId },
+    select: { userId: true },
+  });
+  const allowedMemberIds = firmMemberIds.map(({ userId }) => userId);
 
   await prisma.$transaction(async (tx) => {
     await tx.projectMember.deleteMany({
-      where: { projectId: id, userId: { notIn: uniqueMemberIds } },
+      where: { projectId: id, userId: { notIn: allowedMemberIds } },
     });
     await tx.project.update({
       where: { id },
@@ -80,7 +94,7 @@ export async function updateProject(id: string, formData: FormData) {
         description: description.trim(),
       },
     });
-    for (const userId of uniqueMemberIds) {
+    for (const userId of allowedMemberIds) {
       await tx.projectMember.upsert({
         where: {
           projectId_userId: {
@@ -105,13 +119,14 @@ export async function updateProject(id: string, formData: FormData) {
  */
 export async function deleteProject(id: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const project = await prisma.project.findUnique({
     where: { id },
     include: { members: true },
   });
   if (!project) return { error: "Project not found" };
+  if (project.firmId !== session.user.firmId) return { error: "Project not found" };
 
   const userProjectRole =
     project.members.find((m) => m.userId === session.user.id)?.role ?? null;
@@ -129,13 +144,14 @@ export async function deleteProject(id: string) {
 /** Removes a user from a project. The project owner cannot be removed. */
 export async function removeProjectMember(projectId: string, userId: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: { members: true },
   });
   if (!project) return { error: "Project not found" };
+  if (project.firmId !== session.user.firmId) return { error: "Project not found" };
   if (userId === project.managerId) {
     return { error: "Project owner cannot be removed" };
   }

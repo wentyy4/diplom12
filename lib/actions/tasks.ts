@@ -25,13 +25,17 @@ function isTaskStatus(status: string): status is (typeof TASK_STATUSES)[number] 
 async function ensureProjectAccess(
   projectId: string,
   userId: string,
-  role: string
+  role: string,
+  firmId: string
 ) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     include: { members: true },
   });
   if (!project) return { error: "Project not found" as const, project: null };
+  if (project.firmId !== firmId) {
+    return { error: "Project not found" as const, project: null };
+  }
 
   const isManager = project.managerId === userId;
   const membership = project.members.find((m) => m.userId === userId);
@@ -44,12 +48,13 @@ async function ensureProjectAccess(
 
 export async function createTask(projectId: string, formData: FormData) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const { error, project } = await ensureProjectAccess(
     projectId,
     session.user.id,
-    session.user.role as string
+    session.user.role as string,
+    session.user.firmId
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
@@ -103,12 +108,13 @@ export async function updateTask(
   formData: FormData
 ) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const { error, project } = await ensureProjectAccess(
     projectId,
     session.user.id,
-    session.user.role as string
+    session.user.role as string,
+    session.user.firmId
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
@@ -174,12 +180,13 @@ export async function updateTask(
 
 export async function deleteTask(taskId: string, projectId: string) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
 
   const { error, project } = await ensureProjectAccess(
     projectId,
     session.user.id,
-    session.user.role as string
+    session.user.role as string,
+    session.user.firmId
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
@@ -206,7 +213,7 @@ export async function moveTask(
   newPosition: number
 ) {
   const session = await auth();
-  if (!session?.user?.id) return { error: "Unauthorized" };
+  if (!session?.user?.id || !session.user.firmId) return { error: "Unauthorized" };
   if (!isTaskStatus(newStatus)) return { error: "Invalid task status" };
   if (!Number.isInteger(newPosition) || newPosition < 0) {
     return { error: "Invalid task position" };
@@ -215,12 +222,16 @@ export async function moveTask(
   const { error, project } = await ensureProjectAccess(
     projectId,
     session.user.id,
-    session.user.role as string
+    session.user.role as string,
+    session.user.firmId
   );
   if (error || !project) return { error: error ?? "Access denied" };
 
   const task = await prisma.task.findUnique({ where: { id: taskId } });
   if (!task) return { error: "Task not found" };
+  if (task.projectId !== projectId) return { error: "Task not found" };
+  if (task.projectId !== projectId) return { error: "Task not found" };
+  if (task.projectId !== projectId) return { error: "Task not found" };
 
   const userProjectRole =
     project.members.find((m) => m.userId === session.user.id)?.role ?? null;

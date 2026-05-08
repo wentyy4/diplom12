@@ -7,48 +7,76 @@ async function main() {
   const adminPassword = await bcrypt.hash("admin123", 10);
   const managerPassword = await bcrypt.hash("manager123", 10);
   const memberPassword = await bcrypt.hash("member123", 10);
+  const firm = await prisma.firm.upsert({
+    where: { id: "demo-firm" },
+    update: {},
+    create: {
+      id: "demo-firm",
+      name: "Demo IT Firm",
+    },
+  });
 
   const admin = await prisma.user.upsert({
     where: { email: "admin@example.com" },
-    update: {},
+    update: { firmId: firm.id },
     create: {
       name: "Admin User",
       email: "admin@example.com",
       password: adminPassword,
       role: "ADMIN",
+      firmId: firm.id,
     },
   });
 
   const manager = await prisma.user.upsert({
     where: { email: "manager@example.com" },
-    update: {},
+    update: { firmId: firm.id },
     create: {
       name: "Project Manager",
       email: "manager@example.com",
       password: managerPassword,
       role: "MANAGER",
+      firmId: firm.id,
     },
   });
 
   const member = await prisma.user.upsert({
     where: { email: "member@example.com" },
-    update: {},
+    update: { firmId: firm.id },
     create: {
       name: "Team Member",
       email: "member@example.com",
       password: memberPassword,
       role: "MEMBER",
+      firmId: firm.id,
     },
   });
 
   const existingProject = await prisma.project.findFirst({
-    where: { name: "Sample IT Project" },
+    where: { name: "Sample IT Project", firmId: firm.id },
   });
+  await prisma.firmMember.upsert({
+    where: { firmId_userId: { firmId: firm.id, userId: admin.id } },
+    update: { role: "ADMIN" },
+    create: { firmId: firm.id, userId: admin.id, role: "ADMIN" },
+  });
+  await prisma.firmMember.upsert({
+    where: { firmId_userId: { firmId: firm.id, userId: manager.id } },
+    update: { role: "MANAGER" },
+    create: { firmId: firm.id, userId: manager.id, role: "MANAGER" },
+  });
+  await prisma.firmMember.upsert({
+    where: { firmId_userId: { firmId: firm.id, userId: member.id } },
+    update: { role: "MEMBER" },
+    create: { firmId: firm.id, userId: member.id, role: "MEMBER" },
+  });
+
   const project = existingProject ?? await prisma.project.create({
     data: {
       name: "Sample IT Project",
       description: "A sample project for demonstration",
       managerId: manager.id,
+      firmId: firm.id,
       members: {
         create: [{ userId: member.id }],
       },
