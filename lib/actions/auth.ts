@@ -9,11 +9,6 @@ import { redirect } from "next/navigation";
 import { isValidEmail } from "@/lib/validations";
 import { isInviteRole, type Role } from "@/lib/rbac";
 
-/** Registration is open: direct sign-up creates a manager account for own projects. */
-export async function isBootstrapMode(): Promise<boolean> {
-  return true;
-}
-
 /** Public preview of an invitation by token for the register page. */
 export async function getInvitationByToken(token: string): Promise<
   | {

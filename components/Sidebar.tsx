@@ -9,10 +9,12 @@ import {
   LogOut,
   Menu,
   User,
+  Users as UsersIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { logout } from "@/lib/actions/auth";
+import { canManageUsers } from "@/lib/rbac";
 import {
   Sheet,
   SheetContent,
@@ -21,24 +23,37 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-const navItems = [
+type NavItem = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  adminOnly?: boolean;
+};
+
+const navItems: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/users", label: "Users", icon: UsersIcon, adminOnly: true },
   { href: "/profile", label: "Profile", icon: User },
 ];
 
 function NavLinks({
   onClick,
   className,
+  userRole,
 }: {
   onClick?: () => void;
   className?: string;
+  userRole: string | null;
 }) {
   const pathname = usePathname();
+  const visibleItems = navItems.filter(
+    (item) => !item.adminOnly || (userRole !== null && canManageUsers(userRole))
+  );
 
   return (
     <nav className={cn("space-y-1", className)}>
-      {navItems.map((item) => {
+      {visibleItems.map((item) => {
         const Icon = item.icon;
         const isActive =
           pathname === item.href || pathname.startsWith(item.href + "/");
@@ -61,7 +76,7 @@ function NavLinks({
   );
 }
 
-export function Sidebar() {
+export function Sidebar({ userRole }: { userRole: string | null }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -88,7 +103,7 @@ export function Sidebar() {
               </SheetTitle>
             </SheetHeader>
             <div className="flex flex-col gap-4 mt-6">
-              <NavLinks onClick={() => setOpen(false)} />
+              <NavLinks onClick={() => setOpen(false)} userRole={userRole} />
               <form action={logout} className="mt-auto pt-4 border-t">
                 <Button
                   variant="ghost"
@@ -113,7 +128,7 @@ export function Sidebar() {
           </Link>
         </div>
         <nav className="flex-1 p-4 space-y-1">
-          <NavLinks />
+          <NavLinks userRole={userRole} />
         </nav>
         <div className="p-4 border-t">
           <form action={logout}>

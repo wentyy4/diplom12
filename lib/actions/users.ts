@@ -20,8 +20,7 @@ function newToken(): string {
 }
 
 function buildInviteLink(token: string): string {
-  // NEXT_PUBLIC_APP_URL is set on Vercel for production; fall back to localhost
-  // for development so the same code path works without extra env wiring.
+  // Use the configured app URL when present; fall back to localhost for local development.
   const base = (
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.NEXTAUTH_URL ||
@@ -101,7 +100,10 @@ export async function createInvitation(formData: FormData) {
         role: role === "MANAGER" ? "PROJECT_MANAGER" : "MEMBER",
       },
     });
-    if (!projectId && role === "MANAGER" && existingUser.role === "MEMBER") {
+    // If the user gains project-manager rights inside a project, lift their
+    // global role from MEMBER to MANAGER so they can also create their own
+    // projects. ADMINs stay ADMIN; existing MANAGERs are unchanged.
+    if (role === "MANAGER" && existingUser.role === "MEMBER") {
       await prisma.user.update({
         where: { id: existingUser.id },
         data: { role: "MANAGER" },
